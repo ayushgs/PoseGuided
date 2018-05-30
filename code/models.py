@@ -10,7 +10,7 @@ def unflatten(x, N=-1, C=128, H=7, W=7):
     return x.view(N, C, H, W)
 
 
-class G1(nn.Module):
+class Generator1(nn.Module):
     """
         Assumptions:
            Expects x to be NCHW with C=3
@@ -19,7 +19,7 @@ class G1(nn.Module):
     """
     def __init__(self, z_num, repeat_num, hidden_num, min_fea_map_H=8):
         
-        super(G1, self).__init__()
+        super(Generator1, self).__init__()
         
         self.repeat_num     = repeat_num
         self.hidden_num     = hidden_num
@@ -93,13 +93,13 @@ class G1(nn.Module):
             
 
 
-class G2(nn.Module):
+class Generator2(nn.Module):
     """
         Assumes concatenated input of the form : x + G1
         Total input channels = 6
     """
-    def __init__(repeat_num, hidden_num, noise_dim=64, min_fea_map_H=8):
-        super(G2, self).__init__()
+    def __init__(repeat_num, hidden_num, noise_dim=64):
+        super(Generator2, self).__init__()
 
         self.repeat_num = repeat_num
         self.hidden_num = hidden_num
@@ -160,15 +160,15 @@ class G2(nn.Module):
             x = self.Dconv(x) 
             return x
 
-class D(nn.Module):
-    def __init__(self, inputs, input_dim=3, dim=64, bn=True):
-        super(D, self).__init__()
+class Discriminator(nn.Module):
+    def __init__(self, input_dim=3, dim=64):
+        super(Discriminator, self).__init__()
 
-        self.conv1  = nn.Sequential(nn.Conv2d(input_dim, dim, 5, 2),nn.LeakyReLU())
-        self.conv2  = nn.Sequential(nn.Conv2d(dim, dim*2, 5, 2), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
-        self.conv3  = nn.Sequential(nn.Conv2d(dim*2, dim*4, 5, 2), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
-        self.conv4  = nn.Sequential(nn.Conv2d(dim*4, dim*8, 5, 2), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
-        self.conv5  = nn.Sequential(nn.Conv2d(dim*8, dim*8, 5, 2), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
+        self.conv1  = nn.Sequential(nn.Conv2d(input_dim, dim, 5, 2, 1),nn.LeakyReLU())
+        self.conv2  = nn.Sequential(nn.Conv2d(dim, dim*2, 5, 2, 1), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
+        self.conv3  = nn.Sequential(nn.Conv2d(dim*2, dim*4, 5, 2, 1), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
+        self.conv4  = nn.Sequential(nn.Conv2d(dim*4, dim*8, 5, 2, 1), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
+        self.conv5  = nn.Sequential(nn.Conv2d(dim*8, dim*8, 5, 2, 1), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
 
         self.linear = nn.Linear(8*8*8*dim, 1)
     
