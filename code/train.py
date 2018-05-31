@@ -41,7 +41,7 @@ class Trainer:
             self.dataset   = Dataset(**get_split('train'), True)
             self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
         else:
-            self.dataset   = Dataset(**get_split('test'), 2, True)
+            self.dataset   = Dataset(**get_split('test'), True)
             self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
 
 
