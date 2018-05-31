@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.utils import data
 from models import *
 import numpy as np
 from utils import *
@@ -8,6 +9,8 @@ from skimage.measure import compare_ssim as ssim
 from skimage.color import rgb2gray
 from logger import Logger
 import os
+from data_loader import Dataset
+
 
 
 class Trainer:
@@ -21,11 +24,12 @@ class Trainer:
         self.repeat_num     = int(np.log2(self.height)) - 2
         self.noise_dim      = 0
         self.model_dir      = config.results_dir
-        self.num_epochs     = 75
-        self.num_batches    = 100000 #TODO: length of dataset (batch size = 1)
+        self.num_epochs     = config.num_epochs
+        self.batch_size     = config.batch_size
         self.logger         = Logger(config.log_dir)
         self.pretrained_path= config.pretrained_path
 
+        self.data_loader_params  = {'batch_size': self.batch_size, 'shuffle': True, 'num_workers': 6}
 
         if config.use_cuda:
             self.dtype  = torch.cuda.FloatTensor
@@ -34,16 +38,18 @@ class Trainer:
             self.dtype  = torch.FloatTensor
             self.device = torch.device('cpu')
         if config.train:
-            self.dataset_obj = get_split('train', config.data_path) # TODO: Ayush
+            self.dataset   = Dataset(**get_split('train'), True)
+            self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
         else:
-            self.dataset_obj = get_split('test', config.data_path)
-        
-        
+            self.dataset   = Dataset(**get_split('test'), 2, True)
+            self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
 
-    def _gan_loss(self, real, fake):        
+
+
+    def _gan_loss(self, real, fake):
         gen_cost  =  generator_loss(fake, self.dtype)
-        disc_cost =  0.5 * discriminator_loss(real, fake, self.dtype)                  
-       
+        disc_cost =  0.5 * discriminator_loss(real, fake, self.dtype)
+
         return gen_cost, disc_cost
 
     def loss(self):
@@ -81,14 +87,14 @@ class Trainer:
         self.g2_loss += self.L1Loss2 * 50
 
     def _set_optimizers():
-        self.g1_solver  = torch.optim.Adam(self.Gen1.parameters(), lr = 2e-5, betas=(0.5, 0.999))        
+        self.g1_solver  = torch.optim.Adam(self.Gen1.parameters(), lr = 2e-5, betas=(0.5, 0.999))
         self.g2_solver  = torch.optim.Adam(self.Gen2.parameters(), lr = 2e-5, betas=(0.5, 0.999))
         self.d_solver   = torch.optim.Adam(self.D.parameters(), lr = 2e-5, betas=(0.5, 0.999))
 
     def _init_net():
         """Initializes the models for training/testing
-            Arguments: 
-            pretrained_path: path to the directory holding all G1,G2,D models            
+            Arguments:
+            pretrained_path: path to the directory holding all G1,G2,D models
         """
         if self.pretrained_path is None:
             self.Gen1 = Generator1(self.z_num, self.repeat_num, self.hidden_num).to(self.device)
@@ -103,11 +109,11 @@ class Trainer:
     def train():
         _init_net()
         for epoch in trange(self.num_epochs):
-            for batch in range(self.num_batches):
-                
+            for batch in self.generator:
+
                 self.x, self.x_target, self.pose, self.pose_target, \
-                self.mask, self.mask_target = self._load_batch_pair_pose(self.dataset_obj) # TODO: Ayush
-                
+                self.mask, self.mask_target = batch
+
                 if epoch < 25: # Train only G1
                     loss()
                     self.g1_solver.zero_grad()
@@ -126,18 +132,18 @@ class Trainer:
 
                 if batch % 100 == 0:
                     step = epoch * self.num_batches + batch
-                    print ('Step [{}/{}], G1 Loss: {:.4f}, G2 Loss: {:.4f}, D Loss: {:.4f}' 
-                            .format(step + 1, 
-                            self.num_batches * self.num_epochs, 
-                            self.g1_loss.item(), 
+                    print ('Step [{}/{}], G1 Loss: {:.4f}, G2 Loss: {:.4f}, D Loss: {:.4f}'
+                            .format(step + 1,
+                            self.num_batches * self.num_epochs,
+                            self.g1_loss.item(),
                             self.g2_loss.item(),
                             self.d_loss.item()))
-                
-                    # Log scalar values 
+
+                    # Log scalar values
                     x_fixed, x_target_fixed, pose_fixed, pose_target_fixed, mask_fixed, mask_target_fixed = self.get_image_from_loader()
                     ssim = self.generate(x_fixed, x_target_fixed, pose_target_fixed)
 
-                    info = { 'G1 loss': self.g1_loss.item(), 
+                    info = { 'G1 loss': self.g1_loss.item(),
                              'G2 loss': self.g2_loss.item(),
                              'D loss': self.d_loss.item(),
                              'SSIM': ssim}
@@ -150,7 +156,7 @@ class Trainer:
 
                     for tag, images in info.items():
                         logger.image_summary(tag, images, step+1)
-                    
+
                     # Save all important images
                     save_image(x_fixed, '{}/x_fixed.png'.format(self.model_dir))
                     save_image(x_target_fixed, '{}/x_target_fixed.png'.format(self.model_dir))
@@ -158,7 +164,7 @@ class Trainer:
                     save_image((np.amax(pose_target_fixed, axis=-1, keepdims=True)+1.0)*127.5, '{}/pose_target_fixed.png'.format(self.model_dir))
                     save_image(mask_fixed, '{}/mask_fixed.png'.format(self.model_dir))
                     save_image(mask_target_fixed, '{}/mask_target_fixed.png'.format(self.model_dir))
-            
+
             # Save checkpoints after every epoch
             if not os.path.exists('./checkpoints'):
                 os.makedirs('./checkpoints')
@@ -167,7 +173,7 @@ class Trainer:
             torch.save(self.Gen1, './checkpoints/epoch_'+str(epoch)+'/G1.pt')
             torch.save(self.Gen2, './checkpoints/epoch_'+str(epoch)+'/G2.pt')
             torch.save(self.D, './checkpoints/epoch_'+str(epoch)+'/D.pt')
-                
+
 
 
     def test():
@@ -197,8 +203,9 @@ class Trainer:
         if not os.path.exists(test_result_dir_mask_target):
             os.makedirs(test_result_dir_mask_target)
 
-        for i in xrange(400):
-            #TODO: add self.x loading here
+        for batch in self.generator:
+            self.x, self.x_target, self.pose, self.pose_target, \
+            self.mask, self.mask_target = batch
             x_fixed, x_target_fixed, pose_fixed, pose_target_fixed, mask_fixed, mask_target_fixed = self.get_image_from_loader()
             x = process_image(x_fixed, 127.5, 127.5)
             x_target = process_image(x_target_fixed, 127.5, 127.5)
@@ -238,14 +245,14 @@ class Trainer:
         mask = self.mask*255
         mask_target = self.mask_target*255
         return x, x_target, pose, pose_target, mask, mask_target
-    
+
 
     def generate(self, x_fixed, x_target_fixed, pose_target_fixed, root_path='./images', path=None, idx=None, save=True):
         """Assumes x_target_fixed is a torch tensor"""
 
         G = self.G
         ssim_G_x_list = []
-        
+
         for i in xrange(G.shape[0]):
             G_gray = rgb2gray(torch.clamp(G[i,:],min=0,max=255).numpy().astype(np.uint8))
             x_target_gray = rgb2gray((torch.clamp((x_target_fixed[i,:]+1)*127.5, min=0,max=255)).astype(np.uint8))
@@ -256,9 +263,3 @@ class Trainer:
             save_image(G, path)
             print("[*] Samples saved: {}".format(path))
         return ssim_G_x_mean
-
-
-
-
-
-

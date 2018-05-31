@@ -3,6 +3,33 @@ import scipy.misc as misc
 import os, sys
 import torch
 
+def getProc_Data_Dir(cur_dir, split_name):
+    return os.path.join(cur_dir, 'DF_'+ split_name +'_data')
+
+def getProc_HDF5Data(data_dir, split_name):
+    return os.path.join(data_dir, 'DF_'+ split_name +'.hdf5')
+
+def get_split(split='train'):
+    split_train = 'train'
+    split_test = 'test'
+    cur_dir = os.getcwd()
+
+    Proc_train_data_dir = getProc_Data_Dir(cur_dir, split_name = split_train)
+    Proc_test_data_dir =  getProc_Data_Dir(cur_dir, split_name = split_test)
+
+    train_file = getProc_HDF5Data(Proc_train_data_dir, split_name = split_train)
+    test_file = getProc_HDF5Data(Proc_test_data_dir, split_name = split_test)
+
+    with open(os.path.join(Proc_train_data_dir,'total_training_pairs.txt'), 'r') as f:
+        total_pairs_train = int(f.readline().split(':')[-1])
+
+    with open(os.path.join(Proc_test_data_dir,'total_training_pairs.txt'), 'r') as f:
+        total_pairs_test = int(f.readline().split(':')[-1])
+
+    if split=='train':
+        return {'filename': train_file, 'total_data': total_pairs_train}
+    return {'filename': test_file, 'total_data': total_pairs_test}
+
 def bce_loss(input, target):
     """
     Numerically stable version of the binary cross-entropy loss function.
@@ -21,11 +48,11 @@ def bce_loss(input, target):
 def discriminator_loss(logits_real, logits_fake, dtype):
     """
     Computes the discriminator loss described above.
-    
+
     Inputs:
     - logits_real: PyTorch Tensor of shape (N,) giving scores for the real data.
     - logits_fake: PyTorch Tensor of shape (N,) giving scores for the fake data.
-    
+
     Returns:
     - loss: PyTorch Tensor containing (scalar) the loss for the discriminator.
     """
@@ -42,7 +69,7 @@ def generator_loss(logits_fake, dtype):
 
     Inputs:
     - logits_fake: PyTorch Tensor of shape (N,) giving scores for the fake data.
-    
+
     Returns:
     - loss: PyTorch Tensor containing the (scalar) loss for the generator.
     """
@@ -59,7 +86,7 @@ def save_image(image, image_height, image_width, save_dir, name=""):
     """
     Save image by unprocessing assuming mean 127.5
     """
-    
+
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     image += 1
