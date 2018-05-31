@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from models import *
 import numpy as np
 from utils import *
@@ -10,30 +9,31 @@ from skimage.color import rgb2gray
 from logger import Logger
 import os
 
-logger = Logger('./logs')
 
 class Trainer:
     def __init__(self, config):
-        self.config     = config
-        self.z_num      = config.z_num
-        self.hidden_num = config.conv_hidden_num
-        self.height     = 256
-        self.width      = 256
-        self.channels   = 3
-        self.repeat_num = int(np.log2(self.height)) - 2
-        self.noise_dim  = 0
-        self.model_dir  = config.model_dir
-        self.num_epochs = 75
-        self.num_batches= 100000 #TODO: length of dataset (batch size = 1)
+        self.config         = config
+        self.z_num          = config.z_num
+        self.hidden_num     = config.conv_hidden_num
+        self.height         = 256
+        self.width          = 256
+        self.channels       = 3
+        self.repeat_num     = int(np.log2(self.height)) - 2
+        self.noise_dim      = 0
+        self.model_dir      = config.results_dir
+        self.num_epochs     = 75
+        self.num_batches    = 100000 #TODO: length of dataset (batch size = 1)
+        self.logger         = Logger(config.log_dir)
+        self.pretrained_path= config.pretrained_path
 
 
-        if config.use_gpu:
+        if config.use_cuda:
             self.dtype  = torch.cuda.FloatTensor
-            self.device   = torch.device('cuda')
+            self.device = torch.device('cuda')
         else:
             self.dtype  = torch.FloatTensor
             self.device = torch.device('cpu')
-        if config.is_train:
+        if config.train:
             self.dataset_obj = get_split('train', config.data_path) # TODO: Ayush
         else:
             self.dataset_obj = get_split('test', config.data_path)
@@ -85,12 +85,12 @@ class Trainer:
         self.g2_solver  = torch.optim.Adam(self.Gen2.parameters(), lr = 2e-5, betas=(0.5, 0.999))
         self.d_solver   = torch.optim.Adam(self.D.parameters(), lr = 2e-5, betas=(0.5, 0.999))
 
-    def _init_net(pretrained_path=None):
+    def _init_net():
         """Initializes the models for training/testing
             Arguments: 
             pretrained_path: path to the directory holding all G1,G2,D models            
         """
-        if pretrained_path is None:
+        if self.pretrained_path is None:
             self.Gen1 = Generator1(self.z_num, self.repeat_num, self.hidden_num).to(self.device)
             self.Gen2 = Generator2(self.repeat_num, self.hidden_num, self.noise_dim).to(self.device)
             self.D    = Discriminator().to(self.device)
@@ -100,8 +100,8 @@ class Trainer:
             self.Gen3 = torch.load(pretrained_path + '/G1.pt')
 
 
-    def train(pretrained_path=None):
-        _init_net(pretrained_path)
+    def train():
+        _init_net()
         for epoch in trange(self.num_epochs):
             for batch in range(self.num_batches):
                 
@@ -170,8 +170,8 @@ class Trainer:
                 
 
 
-    def test(pretrained_path):
-        _init_net(pretrained_path)
+    def test():
+        _init_net()
         test_result_dir = os.path.join(self.model_dir, 'test_result')
         test_result_dir_x = os.path.join(test_result_dir, 'x')
         test_result_dir_x_target = os.path.join(test_result_dir, 'x_target')
@@ -241,14 +241,14 @@ class Trainer:
     
 
     def generate(self, x_fixed, x_target_fixed, pose_target_fixed, root_path='./images', path=None, idx=None, save=True):
-        # TODO: fix this function - types torch vs numpy
+        """Assumes x_target_fixed is a torch tensor"""
 
         G = self.G
         ssim_G_x_list = []
         
         for i in xrange(G.shape[0]):
             G_gray = rgb2gray(torch.clamp(G[i,:],min=0,max=255).numpy().astype(np.uint8))
-            x_target_gray = rgb2gray(((x_target_fixed[i,:]+1)*127.5).clip(min=0,max=255).astype(np.uint8))
+            x_target_gray = rgb2gray((torch.clamp((x_target_fixed[i,:]+1)*127.5, min=0,max=255)).astype(np.uint8))
             ssim_G_x_list.append(ssim(G_gray, x_target_gray, data_range=x_target_gray.max() - x_target_gray.min(), multichannel=False))
         ssim_G_x_mean = np.mean(ssim_G_x_list)
         if path is None and save:

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 def flatten(x):
     N = x.shape[0] # read in N, C, H, W
