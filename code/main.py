@@ -3,9 +3,9 @@ import argparse
 
 def main(config):
     trainer = Trainer(config)
-    if config.train:
+    if config['train']:
         trainer.train()
-    if config.test:
+    else:
         if config.pretrained_path is None:
             raise Exception("[!] You should specify `pretrained_path` to load a pretrained model")
         trainer.test()
@@ -23,8 +23,8 @@ if __name__ == "__main__":
     parser.add_argument('--results_dir', type=str, default=None)
     parser.add_argument('--log_dir', type=str, default='logs')
     parser.add_argument('--train', action='store_true')
-    parser.add_argument('--test', action='store_true')
     
     args = parser.parse_args()
     config = vars(args)
+    
     main(config)
