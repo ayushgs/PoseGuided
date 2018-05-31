@@ -4,12 +4,13 @@ from torch.utils import data
 from models import *
 import numpy as np
 from utils import *
-from tqdm import trange
+from tqdm import tqdm
 from skimage.measure import compare_ssim as ssim
 from skimage.color import rgb2gray
 from logger import Logger
 import os
 from data_loader import Dataset
+from torchvision.utils import save_image
 
 
 
@@ -24,10 +25,15 @@ class Trainer:
         self.repeat_num     = int(np.log2(self.height)) - 2
         self.noise_dim      = 0
         self.model_dir      = config['results_dir']
-        self.num_epochs     = config['num_epochs']
+        self.max_steps      = config['max_steps']
         self.batch_size     = config['batch_size']
         self.logger         = Logger(config['log_dir'])
         self.pretrained_path= config['pretrained_path']
+        self.log_every      = config['log_every']
+        self.save_every     = config['save_every']
+
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
 
         self.data_loader_params  = {'batch_size': self.batch_size, 'shuffle': True, 'num_workers': 6}
 
@@ -39,11 +45,11 @@ class Trainer:
             self.device = torch.device('cpu')
         if config['train']:
             self.dataset   = Dataset(**get_split('train'))
-            self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
+            self.generator = tqdm(iter(data.DataLoader(self.dataset, **self.data_loader_params)))
             self.n_samples = get_split('train')['total_data']
         else:
             self.dataset   = Dataset(**get_split('test'))
-            self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
+            self.generator = tqdm(iter(data.DataLoader(self.dataset, **self.data_loader_params)))
             self.n_samples = get_split('train')['total_data']
 
 
@@ -63,9 +69,9 @@ class Trainer:
         G2      = G1 + Diffmap
 
         # Denormalize images to be in range 0-255
-        self.G1 = denorm_img(G1)
+        self.G1 = denorm_img(G1).detach()
         self.G2 = denorm_img(G2)
-        self.G  = self.G2
+        self.G  = self.G2.detach()
         self.DiffMap = denorm_img(Diffmap)
 
         # Feed to Discriminator
@@ -103,29 +109,28 @@ class Trainer:
             self.Gen2 = Generator2(self.repeat_num, self.hidden_num, self.noise_dim).to(self.device)
             self.D    = Discriminator().to(self.device)
         else:
-            self.Gen1 = torch.load(pretrained_path + '/G1.pt')
-            self.Gen2 = torch.load(pretrained_path + '/G1.pt')
-            self.Gen3 = torch.load(pretrained_path + '/G1.pt')
+            self.Gen1 = torch.load(self.pretrained_path + '/G1.pt')
+            self.Gen2 = torch.load(self.pretrained_path + '/G2.pt')
+            self.D    = torch.load(self.pretrained_path + '/D.pt')
 
 
     def train(self):
         self._init_net()
         self._set_optimizers()
         step = 0
-        for epoch in trange(self.num_epochs):
-            for batch, batch_data in enumerate(self.generator):
+        for batch, batch_data in enumerate(self.generator):
 
                 self.x, self.x_target, self.pose, self.pose_target, \
                 self.mask, self.mask_target = batch_data
 
-                self.x = self.x.float()
-                self.x_target = self.x_target.float()
-                self.pose = self.pose.float()
-                self.pose_target = self.pose_target.float()
-                self.mask = self.mask.float()
-                self.mask_target = self.mask_target.float()
+                self.x           = self.x.to(self.device)
+                self.x_target    = self.x_target.to(self.device)
+                self.pose        = self.pose.to(self.device)
+                self.pose_target = self.pose_target.to(self.device)
+                self.mask        = self.mask.to(self.device)
+                self.mask_target = self.mask_target.to(self.device)
 
-                if epoch < 25: # Train only G1
+                if step < 25000: # Train only G1
                     self.loss()
                     self.g1_solver.zero_grad()
                     self.g1_loss.backward()
@@ -142,17 +147,28 @@ class Trainer:
                     self.g2_solver.step()
 
                 step += 1
-                if step % 100 == 0:
+                
+                if step % self.log_every == 0:
                     print ('Step [{}/{}], G1 Loss: {:.4f}, G2 Loss: {:.4f}, D Loss: {:.4f}'
                             .format(step,
-                            self.n_samples * self.num_epochs,
+                            self.max_steps,
                             self.g1_loss.item(),
                             self.g2_loss.item(),
                             self.d_loss.item()))
 
-                    # Log scalar values
+                    
                     x_fixed, x_target_fixed, pose_fixed, pose_target_fixed, mask_fixed, mask_target_fixed = self.get_image_from_loader()
-                    ssim = self.generate(x_fixed, x_target_fixed, pose_target_fixed)
+                    
+                    # Save all important images
+                    save_image(x_fixed, '{}/x_fixed.png'.format(self.model_dir))
+                    save_image(x_target_fixed, '{}/x_target_fixed.png'.format(self.model_dir))
+                    save_image((torch.max(pose_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_fixed.png'.format(self.model_dir))
+                    save_image((torch.max(pose_target_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_target_fixed.png'.format(self.model_dir))
+                    save_image(mask_fixed, '{}/mask_fixed.png'.format(self.model_dir))
+                    save_image(mask_target_fixed, '{}/mask_target_fixed.png'.format(self.model_dir))
+
+                    # Log scalar values
+                    ssim = self.generate(x_fixed, x_target_fixed, pose_target_fixed, idx=step)
 
                     info = { 'G1 loss': self.g1_loss.item(),
                              'G2 loss': self.g2_loss.item(),
@@ -160,34 +176,33 @@ class Trainer:
                              'SSIM': ssim}
 
                     for tag, value in info.items():
-                        logger.scalar_summary(tag, value, step)
+                        self.logger.scalar_summary(tag, value, step)
 
                     # Log generated images
-                    info = { 'images': self.G.view(-1, 256, 256)[:10].cpu().numpy()}
+                    info = { 'Target': 255 * x_target_fixed.view(-1, 3, 256, 256)[:10].cpu().numpy(),
+                            'G1': self.G1.view(-1, 3, 256, 256)[:10].cpu().numpy(),
+                             'G2': self.G.view(-1, 3, 256, 256)[:10].cpu().numpy()}
 
                     for tag, images in info.items():
-                        logger.image_summary(tag, images, step)
+                        self.logger.image_summary(tag, images, step)
 
-                    # Save all important images
-                    save_image(x_fixed, '{}/x_fixed.png'.format(self.model_dir))
-                    save_image(x_target_fixed, '{}/x_target_fixed.png'.format(self.model_dir))
-                    save_image((np.amax(pose_fixed, axis=-1, keepdims=True)+1.0)*127.5, '{}/pose_fixed.png'.format(self.model_dir))
-                    save_image((np.amax(pose_target_fixed, axis=-1, keepdims=True)+1.0)*127.5, '{}/pose_target_fixed.png'.format(self.model_dir))
-                    save_image(mask_fixed, '{}/mask_fixed.png'.format(self.model_dir))
-                    save_image(mask_target_fixed, '{}/mask_target_fixed.png'.format(self.model_dir))
+                if step % self.save_every == 0:
+                    # Save checkpoints 
+                    if not os.path.exists('./checkpoints'):
+                        os.makedirs('./checkpoints')
+                    if not os.path.exists('./checkpoints/'+str(step)):
+                        os.makedirs('./checkpoints/'+str(step))
+                    torch.save(self.Gen1, './checkpoints/'+str(step)+'/G1.pt')
+                    torch.save(self.Gen2, './checkpoints/'+str(step)+'/G2.pt')
+                    torch.save(self.D, './checkpoints/'+str(step)+'/D.pt')
 
-            # Save checkpoints after every epoch
-            if not os.path.exists('./checkpoints'):
-                os.makedirs('./checkpoints')
-            if not os.path.exists('./checkpoints/epoch_'+str(epoch)):
-                os.makedirs('./checkpoints/epoch_'+str(epoch))
-            torch.save(self.Gen1, './checkpoints/epoch_'+str(epoch)+'/G1.pt')
-            torch.save(self.Gen2, './checkpoints/epoch_'+str(epoch)+'/G2.pt')
-            torch.save(self.D, './checkpoints/epoch_'+str(epoch)+'/D.pt')
-
+                if step == self.max_steps:
+                    print ("Training Completed.")
+                    break
 
 
     def test(self):
+        # TODO: fix the iteration and torch vs numpy
         self._init_net()
         test_result_dir = os.path.join(self.model_dir, 'test_result')
         test_result_dir_x = os.path.join(test_result_dir, 'x')
@@ -221,56 +236,62 @@ class Trainer:
             x = process_image(x_fixed, 127.5, 127.5)
             x_target = process_image(x_target_fixed, 127.5, 127.5)
             if i == 0:
-                x_fake = self.generate(x, x_target, pose_target_fixed, test_result_dir, idx=self.start_step, save=True)
+                x_fake = self.generate(x, x_target, pose_target_fixed, test_result_dir, idx=batch, save=True)
             else:
-                x_fake = self.generate(x, x_target, pose_target_fixed, test_result_dir, idx=self.start_step, save=False)
-            p = (np.amax(pose_fixed, axis=-1, keepdims=False)+1.0)*127.5
-            pt = (np.amax(pose_target_fixed, axis=-1, keepdims=False)+1.0)*127.5
+                x_fake = self.generate(x, x_target, pose_target_fixed, test_result_dir, idx=batch, save=False)
+            p = (torch.max(pose_fixed, dim=1, keepdim=False)[0]+1.0)*127.5
+            pt = (torch.max(pose_target_fixed, dim=1, keepdim=False)[0]+1.0)*127.5
             for j in range(self.batch_size):
                 idx = i*self.batch_size+j
-                im = Image.fromarray(x_fixed[j,:].astype(np.uint8))
+                im = Image.fromarray(x_fixed[j,:].numpy().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_x, idx))
-                im = Image.fromarray(x_target_fixed[j,:].astype(np.uint8))
+                im = Image.fromarray(x_target_fixed[j,:].numpy().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_x_target, idx))
-                im = Image.fromarray(x_fake[j,:].astype(np.uint8))
+                im = Image.fromarray(x_fake[j,:].numpy().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_G, idx))
-                im = Image.fromarray(p[j,:].astype(np.uint8))
+                im = Image.fromarray(p[j,:].numpy().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_pose, idx))
-                im = Image.fromarray(pt[j,:].astype(np.uint8))
+                im = Image.fromarray(pt[j,:].numpy().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_pose_target, idx))
-                im = Image.fromarray(mask_fixed[j,:].squeeze().astype(np.uint8))
+                im = Image.fromarray(mask_fixed[j,:].numpy().squeeze().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_mask, idx))
-                im = Image.fromarray(mask_target_fixed[j,:].squeeze().astype(np.uint8))
+                im = Image.fromarray(mask_target_fixed[j,:].numpy().squeeze().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_mask_target, idx))
             if 0==i:
                 save_image(x_fixed, '{}/x_fixed.png'.format(test_result_dir))
                 save_image(x_target_fixed, '{}/x_target_fixed.png'.format(test_result_dir))
                 save_image(mask_fixed, '{}/mask_fixed.png'.format(test_result_dir))
                 save_image(mask_target_fixed, '{}/mask_target_fixed.png'.format(test_result_dir))
-                save_image((np.amax(pose_fixed, axis=-1, keepdims=True)+1.0)*127.5, '{}/pose_fixed.png'.format(test_result_dir))
-                save_image((np.amax(pose_target_fixed, axis=-1, keepdims=True)+1.0)*127.5, '{}/pose_target_fixed.png'.format(test_result_dir))
+                save_image((torch.max(pose_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_fixed.png'.format(test_result_dir))
+                save_image((torch.max(pose_target_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_target_fixed.png'.format(test_result_dir))
 
     def get_image_from_loader(self):
-        x = unprocess_image(self.x, 127.5, 127.5)
-        x_target = unprocess_image(self.x_target, 127.5, 127.5)
-        mask = self.mask*255
-        mask_target = self.mask_target*255
+        x = (self.x + 1)/2 # range 0-1 for torchvision.utils.save_image
+        x_target = (self.x_target + 1)/2
+        mask = self.mask.detach()*255
+        mask_target = self.mask_target.detach()*255
+        pose = self.pose.detach()
+        pose_target = self.pose_target.detach()
         return x, x_target, pose, pose_target, mask, mask_target
 
 
-    def generate(self, x_fixed, x_target_fixed, pose_target_fixed, root_path='./images', path=None, idx=None, save=True):
+    def generate(self, x_fixed, x_target_fixed, pose_target_fixed, root_path='./generated_images', path=None, idx=None, save=True):
         """Assumes x_target_fixed is a torch tensor"""
 
-        G = self.G
         ssim_G_x_list = []
-
+        G = self.G # already unprocessed (0-255)
         for i in range(G.shape[0]):
-            G_gray = rgb2gray(torch.clamp(G[i,:],min=0,max=255).numpy().astype(np.uint8))
-            x_target_gray = rgb2gray((torch.clamp((x_target_fixed[i,:]+1)*127.5, min=0,max=255)).astype(np.uint8))
+            G_clamped = torch.clamp(G[i,:],min=0,max=255)
+            G_hwc     = G_clamped.permute(1,2,0)
+            x_t_hwc   = x_target_fixed[i,:].permute(1,2,0)
+            G_gray    = rgb2gray(G_hwc.cpu().numpy().astype(np.uint8))
+            x_target_gray = rgb2gray((torch.clamp((x_t_hwc+1)*127.5, min=0,max=255)).cpu().numpy().astype(np.uint8))
             ssim_G_x_list.append(ssim(G_gray, x_target_gray, data_range=x_target_gray.max() - x_target_gray.min(), multichannel=False))
         ssim_G_x_mean = np.mean(ssim_G_x_list)
         if path is None and save:
+            if not os.path.exists(root_path):
+                os.makedirs(root_path)
             path = os.path.join(root_path, '{}_G_ssim{}.png'.format(idx,ssim_G_x_mean))
-            save_image(G, path)
+            save_image(G/255.0, path) #torchvision.utils.save_image requires it to be 0-1
             print("[*] Samples saved: {}".format(path))
         return ssim_G_x_mean
