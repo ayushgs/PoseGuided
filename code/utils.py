@@ -56,10 +56,8 @@ def discriminator_loss(logits_real, logits_fake, dtype):
     Returns:
     - loss: PyTorch Tensor containing (scalar) the loss for the discriminator.
     """
-    size = logits_real.shape[0]
-    true_labels = torch.ones(size).type(dtype)
-    fake_labels = torch.zeros(size).type(dtype)
-    loss = bce_loss(logits_real, true_labels) + bce_loss(logits_fake, 0)
+    
+    loss = bce_loss(logits_real, 1) + bce_loss(logits_fake, 0)
     return loss
 
 
@@ -73,9 +71,7 @@ def generator_loss(logits_fake, dtype):
     Returns:
     - loss: PyTorch Tensor containing the (scalar) loss for the generator.
     """
-    size = logits_fake.shape[0]
-    true_labels = torch.ones(size).type(dtype)
-    loss = bce_loss(logits_fake, true_labels)
+    loss = bce_loss(logits_fake, 1)
     return loss
 
 def denorm_img(img):

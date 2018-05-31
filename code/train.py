@@ -16,33 +16,35 @@ from data_loader import Dataset
 class Trainer:
     def __init__(self, config):
         self.config         = config
-        self.z_num          = config.z_num
-        self.hidden_num     = config.conv_hidden_num
+        self.z_num          = config['z_num']
+        self.hidden_num     = config['conv_hidden_num']
         self.height         = 256
         self.width          = 256
         self.channels       = 3
         self.repeat_num     = int(np.log2(self.height)) - 2
         self.noise_dim      = 0
-        self.model_dir      = config.results_dir
-        self.num_epochs     = config.num_epochs
-        self.batch_size     = config.batch_size
-        self.logger         = Logger(config.log_dir)
-        self.pretrained_path= config.pretrained_path
+        self.model_dir      = config['results_dir']
+        self.num_epochs     = config['num_epochs']
+        self.batch_size     = config['batch_size']
+        self.logger         = Logger(config['log_dir'])
+        self.pretrained_path= config['pretrained_path']
 
         self.data_loader_params  = {'batch_size': self.batch_size, 'shuffle': True, 'num_workers': 6}
 
-        if config.use_cuda:
+        if config['use_cuda']:
             self.dtype  = torch.cuda.FloatTensor
             self.device = torch.device('cuda')
         else:
             self.dtype  = torch.FloatTensor
             self.device = torch.device('cpu')
-        if config.train:
-            self.dataset   = Dataset(**get_split('train'), True)
+        if config['train']:
+            self.dataset   = Dataset(**get_split('train'))
             self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
+            self.n_samples = get_split('train')['total_data']
         else:
-            self.dataset   = Dataset(**get_split('test'), True)
+            self.dataset   = Dataset(**get_split('test'))
             self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
+            self.n_samples = get_split('train')['total_data']
 
 
 
@@ -64,20 +66,20 @@ class Trainer:
         self.G1 = denorm_img(G1)
         self.G2 = denorm_img(G2)
         self.G  = self.G2
-        self.DiffMap = denorm_img(DiffMap)
+        self.DiffMap = denorm_img(Diffmap)
 
         # Feed to Discriminator
         triplet = torch.cat((self.x_target, G2, self.x), dim=0)
         self.Dz = self.D(triplet)
 
         # Split scores for loss functions
-        D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(self.D_z, 3, dim=0)
+        D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(self.Dz, 3, dim=0)[0]
 
         # Positive
         D_z_pos = D_z_pos_x_target
 
         # Negative
-        D_z_neg = torch.cat((D_z_neg_g2, D_z_neg_x), dim=0)
+        D_z_neg = torch.Tensor((D_z_neg_g2, D_z_neg_x))
 
         # Losses
         self.g1_loss = torch.mean(torch.abs(G1-self.x_target))
@@ -86,12 +88,12 @@ class Trainer:
         self.L1Loss2 = torch.mean(torch.abs(G2 - self.x_target)) + self.PoseMaskLoss
         self.g2_loss += self.L1Loss2 * 50
 
-    def _set_optimizers():
+    def _set_optimizers(self):
         self.g1_solver  = torch.optim.Adam(self.Gen1.parameters(), lr = 2e-5, betas=(0.5, 0.999))
         self.g2_solver  = torch.optim.Adam(self.Gen2.parameters(), lr = 2e-5, betas=(0.5, 0.999))
         self.d_solver   = torch.optim.Adam(self.D.parameters(), lr = 2e-5, betas=(0.5, 0.999))
 
-    def _init_net():
+    def _init_net(self):
         """Initializes the models for training/testing
             Arguments:
             pretrained_path: path to the directory holding all G1,G2,D models
@@ -106,35 +108,44 @@ class Trainer:
             self.Gen3 = torch.load(pretrained_path + '/G1.pt')
 
 
-    def train():
-        _init_net()
+    def train(self):
+        self._init_net()
+        self._set_optimizers()
+        step = 0
         for epoch in trange(self.num_epochs):
-            for batch in self.generator:
+            for batch, batch_data in enumerate(self.generator):
 
                 self.x, self.x_target, self.pose, self.pose_target, \
-                self.mask, self.mask_target = batch
+                self.mask, self.mask_target = batch_data
+
+                self.x = self.x.float()
+                self.x_target = self.x_target.float()
+                self.pose = self.pose.float()
+                self.pose_target = self.pose_target.float()
+                self.mask = self.mask.float()
+                self.mask_target = self.mask_target.float()
 
                 if epoch < 25: # Train only G1
-                    loss()
+                    self.loss()
                     self.g1_solver.zero_grad()
                     self.g1_loss.backward()
                     self.g1_solver.step()
                 else: # Train G2 and D
-                    loss()
+                    self.loss()
                     self.d_solver.zero_grad()
                     self.d_loss.backward()
                     self.d_solver.step()
 
-                    loss() #TODO: is it required for alternating optimization?
+                    self.loss() #TODO: is it required for alternating optimization?
                     self.g2_solver.zero_grad()
                     self.g2_loss.backward()
                     self.g2_solver.step()
 
-                if batch % 100 == 0:
-                    step = epoch * self.num_batches + batch
+                step += 1
+                if step % 100 == 0:
                     print ('Step [{}/{}], G1 Loss: {:.4f}, G2 Loss: {:.4f}, D Loss: {:.4f}'
-                            .format(step + 1,
-                            self.num_batches * self.num_epochs,
+                            .format(step,
+                            self.n_samples * self.num_epochs,
                             self.g1_loss.item(),
                             self.g2_loss.item(),
                             self.d_loss.item()))
@@ -149,13 +160,13 @@ class Trainer:
                              'SSIM': ssim}
 
                     for tag, value in info.items():
-                        logger.scalar_summary(tag, value, step+1)
+                        logger.scalar_summary(tag, value, step)
 
                     # Log generated images
                     info = { 'images': self.G.view(-1, 256, 256)[:10].cpu().numpy()}
 
                     for tag, images in info.items():
-                        logger.image_summary(tag, images, step+1)
+                        logger.image_summary(tag, images, step)
 
                     # Save all important images
                     save_image(x_fixed, '{}/x_fixed.png'.format(self.model_dir))
@@ -176,8 +187,8 @@ class Trainer:
 
 
 
-    def test():
-        _init_net()
+    def test(self):
+        self._init_net()
         test_result_dir = os.path.join(self.model_dir, 'test_result')
         test_result_dir_x = os.path.join(test_result_dir, 'x')
         test_result_dir_x_target = os.path.join(test_result_dir, 'x_target')
@@ -215,7 +226,7 @@ class Trainer:
                 x_fake = self.generate(x, x_target, pose_target_fixed, test_result_dir, idx=self.start_step, save=False)
             p = (np.amax(pose_fixed, axis=-1, keepdims=False)+1.0)*127.5
             pt = (np.amax(pose_target_fixed, axis=-1, keepdims=False)+1.0)*127.5
-            for j in xrange(self.batch_size):
+            for j in range(self.batch_size):
                 idx = i*self.batch_size+j
                 im = Image.fromarray(x_fixed[j,:].astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_x, idx))
@@ -253,7 +264,7 @@ class Trainer:
         G = self.G
         ssim_G_x_list = []
 
-        for i in xrange(G.shape[0]):
+        for i in range(G.shape[0]):
             G_gray = rgb2gray(torch.clamp(G[i,:],min=0,max=255).numpy().astype(np.uint8))
             x_target_gray = rgb2gray((torch.clamp((x_target_fixed[i,:]+1)*127.5, min=0,max=255)).astype(np.uint8))
             ssim_G_x_list.append(ssim(G_gray, x_target_gray, data_range=x_target_gray.max() - x_target_gray.min(), multichannel=False))
