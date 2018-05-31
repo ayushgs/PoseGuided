@@ -16,7 +16,7 @@ class Generator1(nn.Module):
            pose_target is also NCHW (C=18)
            Total input channels = 21
     """
-    def __init__(self, z_num, repeat_num, hidden_num, min_fea_map_H=8):
+    def __init__(self, z_num, repeat_num, hidden_num, device=torch.device('cpu'), min_fea_map_H=8):
         
         super(Generator1, self).__init__()
         
@@ -26,32 +26,32 @@ class Generator1(nn.Module):
         self.min_fea_map_H  = min_fea_map_H
         		
 		#ENCODER
-        self.Econv1 = nn.Sequential(nn.Conv2d(21,hidden_num,3,1,1),nn.ReLU()) 
+        self.Econv1 = nn.Sequential(nn.Conv2d(21,hidden_num,3,1,1),nn.ReLU()).to(device=device)
         self.Elayers = {}
         inp_channels = hidden_num
         for idx in range(repeat_num):
             channel_num = hidden_num*(idx+1)
-            self.Elayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(inp_channels,channel_num,3,1,1),nn.ReLU())
-            self.Elayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU())
+            self.Elayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(inp_channels,channel_num,3,1,1),nn.ReLU()).to(device=device)
+            self.Elayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU()).to(device=device)
             inp_channels     = channel_num
             if idx < repeat_num - 1:
-                self.Elayers[str(idx+1)+"_3"] = nn.Sequential(nn.Conv2d(channel_num,hidden_num*(idx+2),3,2,1),nn.ReLU())
+                self.Elayers[str(idx+1)+"_3"] = nn.Sequential(nn.Conv2d(channel_num,hidden_num*(idx+2),3,2,1),nn.ReLU()).to(device=device)
                 inp_channels = hidden_num*(idx+2)
 
-        self.Elinear1 = nn.Linear(min_fea_map_H * min_fea_map_H * channel_num, z_num)
+        self.Elinear1 = nn.Linear(min_fea_map_H * min_fea_map_H * channel_num, z_num).to(device=device)
 
         #DECODER
-        self.Dlinear1 = nn.Linear(z_num, min_fea_map_H * min_fea_map_H * hidden_num * repeat_num) # NOTE: Different from their code (repeat_num)
+        self.Dlinear1 = nn.Linear(z_num, min_fea_map_H * min_fea_map_H * hidden_num * repeat_num).to(device=device) # NOTE: Different from their code (repeat_num)
         self.Dlayers = {}
         for idx in range(repeat_num):
             channel_num = hidden_num * (repeat_num - idx) * 2
-            self.Dlayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU())
-            self.Dlayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU())
+            self.Dlayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU()).to(device=device)
+            self.Dlayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU()).to(device=device)
             if idx < repeat_num - 1:
-                self.Dlayers[str(idx+1)+"_3"] = nn.Sequential(nn.Conv2d(channel_num,hidden_num*(repeat_num-idx-1),3,1,1),nn.ReLU())
+                self.Dlayers[str(idx+1)+"_3"] = nn.Sequential(nn.Conv2d(channel_num,hidden_num*(repeat_num-idx-1),3,1,1),nn.ReLU()).to(device=device)
 
-        self.Dconv    = nn.Conv2d(channel_num, 3, 3, 1, 1) # generates a 3 channel image
-        self.upscale  = nn.Upsample(scale_factor=2, mode='nearest')
+        self.Dconv    = nn.Conv2d(channel_num, 3, 3, 1, 1).to(device=device) # generates a 3 channel image
+        self.upscale  = nn.Upsample(scale_factor=2, mode='nearest').to(device=device)
 
     def forward(self, x, pose_target):
         x   = torch.cat((x,pose_target), dim=1)
@@ -97,7 +97,7 @@ class Generator2(nn.Module):
         Assumes concatenated input of the form : x + G1
         Total input channels = 6
     """
-    def __init__(self, repeat_num, hidden_num, noise_dim=64):
+    def __init__(self, repeat_num, hidden_num, noise_dim=64, device=torch.device('cpu')):
         super(Generator2, self).__init__()
 
         self.repeat_num = repeat_num
@@ -105,16 +105,16 @@ class Generator2(nn.Module):
         self.noise_dim  = noise_dim
 
         #ENCODER
-        self.Econv1 = nn.Sequential(nn.Conv2d(6,hidden_num,3,1,1),nn.ReLU()) 
+        self.Econv1 = nn.Sequential(nn.Conv2d(6,hidden_num,3,1,1),nn.ReLU()).to(device=device)
         self.Elayers = {}
         inp_channels = hidden_num
         for idx in range(repeat_num):
             channel_num = hidden_num*(idx+1)
-            self.Elayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(inp_channels,channel_num,3,1,1),nn.ReLU())
-            self.Elayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU())
+            self.Elayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(inp_channels,channel_num,3,1,1),nn.ReLU()).to(device=device)
+            self.Elayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU()).to(device=device)
             inp_channels     = channel_num
             if idx < repeat_num - 1:
-                self.Elayers[str(idx+1)+"_3"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,2,1),nn.ReLU())
+                self.Elayers[str(idx+1)+"_3"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,2,1),nn.ReLU()).to(device=device)
         
         
         self.Dlayers = {}
@@ -123,12 +123,12 @@ class Generator2(nn.Module):
                 channel_num = hidden_num * repeat_num * 2
             else:
                 channel_num = hidden_num * (repeat_num - idx + 1)
-            self.Dlayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(channel_num,hidden_num,3,1,1),nn.ReLU())
-            self.Dlayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(hidden_num,hidden_num,3,1,1),nn.ReLU())
+            self.Dlayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(channel_num,hidden_num,3,1,1),nn.ReLU()).to(device=device)
+            self.Dlayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(hidden_num,hidden_num,3,1,1),nn.ReLU()).to(device=device)
             
 
-        self.Dconv    = nn.Conv2d(hidden_num, 3, 3, 1, 1) # generates a 3 channel image
-        self.upscale  = nn.Upsample(scale_factor=2, mode='nearest')
+        self.Dconv    = nn.Conv2d(hidden_num, 3, 3, 1, 1).to(device=device) # generates a 3 channel image
+        self.upscale  = nn.Upsample(scale_factor=2, mode='nearest').to(device=device)
 
     def forward(self, x):
         x = self.Econv1(x)
@@ -160,16 +160,16 @@ class Generator2(nn.Module):
         return x
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim=3, dim=64):
+    def __init__(self, device=torch.device('cpu'), input_dim=3, dim=64):
         super(Discriminator, self).__init__()
 
-        self.conv1  = nn.Sequential(nn.Conv2d(input_dim, dim, 5, 2, 2),nn.LeakyReLU())
-        self.conv2  = nn.Sequential(nn.Conv2d(dim, dim*2, 5, 2, 2), nn.BatchNorm2d(dim*2), nn.LeakyReLU())
-        self.conv3  = nn.Sequential(nn.Conv2d(dim*2, dim*4, 5, 2, 2), nn.BatchNorm2d(dim*4), nn.LeakyReLU())
-        self.conv4  = nn.Sequential(nn.Conv2d(dim*4, dim*8, 5, 2, 2), nn.BatchNorm2d(dim*8), nn.LeakyReLU())
-        self.conv5  = nn.Sequential(nn.Conv2d(dim*8, dim*8, 5, 2, 2), nn.BatchNorm2d(dim*8), nn.LeakyReLU())
+        self.conv1  = nn.Sequential(nn.Conv2d(input_dim, dim, 5, 2, 2),nn.LeakyReLU()).to(device=device)
+        self.conv2  = nn.Sequential(nn.Conv2d(dim, dim*2, 5, 2, 2), nn.BatchNorm2d(dim*2), nn.LeakyReLU()).to(device=device)
+        self.conv3  = nn.Sequential(nn.Conv2d(dim*2, dim*4, 5, 2, 2), nn.BatchNorm2d(dim*4), nn.LeakyReLU()).to(device=device)
+        self.conv4  = nn.Sequential(nn.Conv2d(dim*4, dim*8, 5, 2, 2), nn.BatchNorm2d(dim*8), nn.LeakyReLU()).to(device=device)
+        self.conv5  = nn.Sequential(nn.Conv2d(dim*8, dim*8, 5, 2, 2), nn.BatchNorm2d(dim*8), nn.LeakyReLU()).to(device=device)
 
-        self.linear = nn.Linear(8*8*8*dim, 1)
+        self.linear = nn.Linear(8*8*8*dim, 1).to(device=device)
     
     def forward(self, x):
         x = self.conv1(x)

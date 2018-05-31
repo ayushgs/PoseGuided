@@ -4,7 +4,6 @@ from torch.utils import data
 from models import *
 import numpy as np
 from utils import *
-from tqdm import tqdm
 from skimage.measure import compare_ssim as ssim
 from skimage.color import rgb2gray
 from logger import Logger
@@ -25,12 +24,13 @@ class Trainer:
         self.repeat_num     = int(np.log2(self.height)) - 2
         self.noise_dim      = 0
         self.model_dir      = config['results_dir']
-        self.max_steps      = config['max_steps']
+        self.num_epochs     = config['num_epochs']
         self.batch_size     = config['batch_size']
         self.logger         = Logger(config['log_dir'])
         self.pretrained_path= config['pretrained_path']
         self.log_every      = config['log_every']
         self.save_every     = config['save_every']
+        self.print_every    = config['print_every']
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -38,34 +38,32 @@ class Trainer:
         self.data_loader_params  = {'batch_size': self.batch_size, 'shuffle': True, 'num_workers': 6}
 
         if config['use_cuda']:
-            self.dtype  = torch.cuda.FloatTensor
             self.device = torch.device('cuda')
         else:
-            self.dtype  = torch.FloatTensor
             self.device = torch.device('cpu')
         if config['train']:
             self.dataset   = Dataset(**get_split('train'))
-            self.generator = tqdm(iter(data.DataLoader(self.dataset, **self.data_loader_params)))
+            self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
             self.n_samples = get_split('train')['total_data']
         else:
             self.dataset   = Dataset(**get_split('test'))
-            self.generator = tqdm(iter(data.DataLoader(self.dataset, **self.data_loader_params)))
+            self.generator = data.DataLoader(self.dataset, **self.data_loader_params)
             self.n_samples = get_split('train')['total_data']
 
 
 
     def _gan_loss(self, real, fake):
-        gen_cost  =  generator_loss(fake, self.dtype)
-        disc_cost =  0.5 * discriminator_loss(real, fake, self.dtype)
+        gen_cost  =  generator_loss(fake)
+        disc_cost =  0.5 * discriminator_loss(real, fake)
 
         return gen_cost, disc_cost
 
     def loss(self):
         #Generate coarse image
-        G1      = self.Gen1(self.x, self.pose_target).type(self.dtype)
+        G1      = self.Gen1(self.x, self.pose_target)
 
         #Generate Diffmap by concatenating G1 and image
-        Diffmap = self.Gen2(torch.cat((G1, self.x), dim=1)).type(self.dtype)
+        Diffmap = self.Gen2(torch.cat((G1, self.x), dim=1))
         G2      = G1 + Diffmap
 
         # Denormalize images to be in range 0-255
@@ -85,7 +83,7 @@ class Trainer:
         D_z_pos = D_z_pos_x_target
 
         # Negative
-        D_z_neg = torch.Tensor((D_z_neg_g2, D_z_neg_x))
+        D_z_neg = torch.Tensor((D_z_neg_g2, D_z_neg_x)).to(device=self.device)
 
         # Losses
         self.g1_loss = torch.mean(torch.abs(G1-self.x_target))
@@ -101,105 +99,103 @@ class Trainer:
 
     def _init_net(self):
         """Initializes the models for training/testing
-            Arguments:
-            pretrained_path: path to the directory holding all G1,G2,D models
         """
         if self.pretrained_path is None:
-            self.Gen1 = Generator1(self.z_num, self.repeat_num, self.hidden_num).to(self.device)
-            self.Gen2 = Generator2(self.repeat_num, self.hidden_num, self.noise_dim).to(self.device)
-            self.D    = Discriminator().to(self.device)
+            self.Gen1 = Generator1(self.z_num, self.repeat_num, self.hidden_num, device=self.device).to(device=self.device)
+            self.Gen2 = Generator2(self.repeat_num, self.hidden_num, self.noise_dim, device=self.device).to(device=self.device)
+            self.D    = Discriminator(device=self.device).to(device=self.device)
         else:
-            self.Gen1 = torch.load(self.pretrained_path + '/G1.pt')
-            self.Gen2 = torch.load(self.pretrained_path + '/G2.pt')
-            self.D    = torch.load(self.pretrained_path + '/D.pt')
+            self.Gen1 = torch.load(self.pretrained_path + '/G1.pt').to(device=self.device)
+            self.Gen2 = torch.load(self.pretrained_path + '/G2.pt').to(device=self.device)
+            self.D    = torch.load(self.pretrained_path + '/D.pt').to(device=self.device)
 
 
     def train(self):
         self._init_net()
         self._set_optimizers()
         step = 0
-        for batch, batch_data in enumerate(self.generator):
+        for epoch in range(self.num_epochs):
+            for batch, batch_data in enumerate(self.generator):
 
-                self.x, self.x_target, self.pose, self.pose_target, \
-                self.mask, self.mask_target = batch_data
+                    self.x, self.x_target, self.pose, self.pose_target, \
+                    self.mask, self.mask_target = batch_data
 
-                self.x           = self.x.to(self.device)
-                self.x_target    = self.x_target.to(self.device)
-                self.pose        = self.pose.to(self.device)
-                self.pose_target = self.pose_target.to(self.device)
-                self.mask        = self.mask.to(self.device)
-                self.mask_target = self.mask_target.to(self.device)
+                    self.x           = self.x.to(device=self.device)
+                    self.x_target    = self.x_target.to(device=self.device)
+                    self.pose        = self.pose.to(device=self.device)
+                    self.pose_target = self.pose_target.to(device=self.device)
+                    self.mask        = self.mask.to(device=self.device)
+                    self.mask_target = self.mask_target.to(device=self.device)
 
-                if step < 25000: # Train only G1
-                    self.loss()
-                    self.g1_solver.zero_grad()
-                    self.g1_loss.backward()
-                    self.g1_solver.step()
-                else: # Train G2 and D
-                    self.loss()
-                    self.d_solver.zero_grad()
-                    self.d_loss.backward()
-                    self.d_solver.step()
+                    if step < 25000: # Train only G1
+                        self.loss()
+                        self.g1_solver.zero_grad()
+                        self.g1_loss.backward()
+                        self.g1_solver.step()
+                    else: # Train G2 and D
+                        self.loss()
+                        self.d_solver.zero_grad()
+                        self.d_loss.backward()
+                        self.d_solver.step()
 
-                    self.loss() #TODO: is it required for alternating optimization?
-                    self.g2_solver.zero_grad()
-                    self.g2_loss.backward()
-                    self.g2_solver.step()
+                        self.loss() #TODO: is it required for alternating optimization?
+                        self.g2_solver.zero_grad()
+                        self.g2_loss.backward()
+                        self.g2_solver.step()
 
-                step += 1
-                
-                if step % self.log_every == 0:
-                    print ('Step [{}/{}], G1 Loss: {:.4f}, G2 Loss: {:.4f}, D Loss: {:.4f}'
-                            .format(step,
-                            self.max_steps,
-                            self.g1_loss.item(),
-                            self.g2_loss.item(),
-                            self.d_loss.item()))
+                    step += 1
+                    
+                    if step % self.print_every == 0:
+
+                        print ('Step [{}/{}], G1 Loss: {:.4f}, G2 Loss: {:.4f}, D Loss: {:.4f}'
+                                .format(step,
+                                self.num_epochs * self.n_samples,
+                                self.g1_loss.item(),
+                                self.g2_loss.item(),
+                                self.d_loss.item()))
+
+                    if step % self.log_every == 0:
+                                               
+                        x_fixed, x_target_fixed, pose_fixed, pose_target_fixed, mask_fixed, mask_target_fixed = self.get_image_from_loader()
+                        
+                        # Save all important images
+                        save_image(x_fixed, '{}/x_fixed.png'.format(self.model_dir))
+                        save_image(x_target_fixed, '{}/x_target_fixed.png'.format(self.model_dir))
+                        save_image((torch.max(pose_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_fixed.png'.format(self.model_dir))
+                        save_image((torch.max(pose_target_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_target_fixed.png'.format(self.model_dir))
+                        save_image(mask_fixed, '{}/mask_fixed.png'.format(self.model_dir))
+                        save_image(mask_target_fixed, '{}/mask_target_fixed.png'.format(self.model_dir))
+
+                        # Log scalar values
+                        ssim = self.generate(x_fixed, x_target_fixed, pose_target_fixed, idx=step)
+
+                        info = { 'G1 loss': self.g1_loss.item(),
+                                'G2 loss': self.g2_loss.item(),
+                                'D loss': self.d_loss.item(),
+                                'SSIM': ssim}
+
+                        for tag, value in info.items():
+                            self.logger.scalar_summary(tag, value, step)
+
+                        # Log generated images
+                        info = { 'Target': 255 * x_target_fixed.view(-1, 3, 256, 256)[:10].cpu().numpy(),
+                                'G1': self.G1.view(-1, 3, 256, 256)[:10].cpu().numpy(),
+                                'G2': self.G.view(-1, 3, 256, 256)[:10].cpu().numpy()}
+
+                        for tag, images in info.items():
+                            self.logger.image_summary(tag, images, step)
+
+                    if step % self.save_every == 0:
+                        # Save checkpoints 
+                        if not os.path.exists('./checkpoints'):
+                            os.makedirs('./checkpoints')
+                        if not os.path.exists('./checkpoints/'+str(step)):
+                            os.makedirs('./checkpoints/'+str(step))
+                        torch.save(self.Gen1, './checkpoints/'+str(step)+'/G1.pt')
+                        torch.save(self.Gen2, './checkpoints/'+str(step)+'/G2.pt')
+                        torch.save(self.D, './checkpoints/'+str(step)+'/D.pt')
 
                     
-                    x_fixed, x_target_fixed, pose_fixed, pose_target_fixed, mask_fixed, mask_target_fixed = self.get_image_from_loader()
-                    
-                    # Save all important images
-                    save_image(x_fixed, '{}/x_fixed.png'.format(self.model_dir))
-                    save_image(x_target_fixed, '{}/x_target_fixed.png'.format(self.model_dir))
-                    save_image((torch.max(pose_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_fixed.png'.format(self.model_dir))
-                    save_image((torch.max(pose_target_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_target_fixed.png'.format(self.model_dir))
-                    save_image(mask_fixed, '{}/mask_fixed.png'.format(self.model_dir))
-                    save_image(mask_target_fixed, '{}/mask_target_fixed.png'.format(self.model_dir))
-
-                    # Log scalar values
-                    ssim = self.generate(x_fixed, x_target_fixed, pose_target_fixed, idx=step)
-
-                    info = { 'G1 loss': self.g1_loss.item(),
-                             'G2 loss': self.g2_loss.item(),
-                             'D loss': self.d_loss.item(),
-                             'SSIM': ssim}
-
-                    for tag, value in info.items():
-                        self.logger.scalar_summary(tag, value, step)
-
-                    # Log generated images
-                    info = { 'Target': 255 * x_target_fixed.view(-1, 3, 256, 256)[:10].cpu().numpy(),
-                            'G1': self.G1.view(-1, 3, 256, 256)[:10].cpu().numpy(),
-                             'G2': self.G.view(-1, 3, 256, 256)[:10].cpu().numpy()}
-
-                    for tag, images in info.items():
-                        self.logger.image_summary(tag, images, step)
-
-                if step % self.save_every == 0:
-                    # Save checkpoints 
-                    if not os.path.exists('./checkpoints'):
-                        os.makedirs('./checkpoints')
-                    if not os.path.exists('./checkpoints/'+str(step)):
-                        os.makedirs('./checkpoints/'+str(step))
-                    torch.save(self.Gen1, './checkpoints/'+str(step)+'/G1.pt')
-                    torch.save(self.Gen2, './checkpoints/'+str(step)+'/G2.pt')
-                    torch.save(self.D, './checkpoints/'+str(step)+'/D.pt')
-
-                if step == self.max_steps:
-                    print ("Training Completed.")
-                    break
-
 
     def test(self):
         # TODO: fix the iteration and torch vs numpy

@@ -1,1 +1,2 @@
-python main.py --train --batch_size=1 --conv_hidden_num=128 --results_dir=results  --use_cuda
+python main.py --train --batch_size=1  --results_dir=results  --use_cuda
+

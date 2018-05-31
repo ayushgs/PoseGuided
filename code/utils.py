@@ -47,7 +47,7 @@ def bce_loss(input, target):
     loss = input.clamp(min=0) - input * target + (1 + neg_abs.exp()).log()
     return loss.mean()
 
-def discriminator_loss(logits_real, logits_fake, dtype):
+def discriminator_loss(logits_real, logits_fake):
     """
     Computes the discriminator loss described above.
 
@@ -58,12 +58,13 @@ def discriminator_loss(logits_real, logits_fake, dtype):
     Returns:
     - loss: PyTorch Tensor containing (scalar) the loss for the discriminator.
     """
-    
-    loss = bce_loss(logits_real, 1) + bce_loss(logits_fake, 0)
+    true = torch.ones_like(logits_real)
+    fake = torch.zeros_like(logits_fake)
+    loss = bce_loss(logits_real, true) + bce_loss(logits_fake, fake)
     return loss
 
 
-def generator_loss(logits_fake, dtype):
+def generator_loss(logits_fake):
     """
     Computes the generator loss described above.
 
@@ -73,7 +74,8 @@ def generator_loss(logits_fake, dtype):
     Returns:
     - loss: PyTorch Tensor containing the (scalar) loss for the generator.
     """
-    loss = bce_loss(logits_fake, 1)
+    true = torch.ones_like(logits_fake)
+    loss = bce_loss(logits_fake, true)
     return loss
 
 def denorm_img(img):
