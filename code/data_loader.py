@@ -28,12 +28,12 @@ class Dataset(data.Dataset):
         file = self.file
         group = 'Data_{}'.format(index)
         with h5py.File(file, 'r') as f_read:
-            image_raw_0 = np.asarray(f_read[group].get('image_raw_0'), dtype = np.float64)
-            image_raw_1 = np.asarray(f_read[group].get('image_raw_1'))
-            pose_r4_0 = np.asarray(f_read[group].get('pose_r4_0'))
-            pose_r4_1 = np.asarray(f_read[group].get('pose_r4_1'))
-            pose_mask_r4_0 = np.asarray(f_read[group].get('pose_mask_r4_0'))
-            pose_mask_r4_1 = np.asarray(f_read[group].get('pose_mask_r4_1'))
+            image_raw_0 = np.asarray(f_read[group].get('image_raw_0'), dtype = np.float32)
+            image_raw_1 = np.asarray(f_read[group].get('image_raw_1'), dtype = np.float32)
+            pose_r4_0 = np.asarray(f_read[group].get('pose_r4_0'), dtype = np.float32)
+            pose_r4_1 = np.asarray(f_read[group].get('pose_r4_1'), dtype = np.float32)
+            pose_mask_r4_0 = np.asarray(f_read[group].get('pose_mask_r4_0'), dtype = np.float32)
+            pose_mask_r4_1 = np.asarray(f_read[group].get('pose_mask_r4_1'), dtype = np.float32)
 
         #processing
         proc_raw_0 = self.proc_rawimage(image_raw_0, 127.5, 127.5)
