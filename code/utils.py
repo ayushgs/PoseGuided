@@ -22,10 +22,10 @@ def get_split(split='train'):
     train_file = getProc_HDF5Data(Proc_train_data_dir, split_name = split_train)
     test_file = getProc_HDF5Data(Proc_test_data_dir, split_name = split_test)
 
-    with open(os.path.join(Proc_train_data_dir,'total_training_pairs.txt'), 'r') as f:
+    with open(os.path.join(Proc_train_data_dir,'total_pairs.txt'), 'r') as f:
         total_pairs_train = int(f.readline().split(':')[-1])
 
-    with open(os.path.join(Proc_test_data_dir,'total_training_pairs.txt'), 'r') as f:
+    with open(os.path.join(Proc_test_data_dir,'total_pairs.txt'), 'r') as f:
         total_pairs_test = int(f.readline().split(':')[-1])
 
     if split=='train':
