@@ -87,10 +87,11 @@ class Trainer:
         D_z_neg = torch.Tensor((D_z_neg_g2, D_z_neg_x)).to(device=self.device)
 
         # Losses
-        self.g1_loss = torch.mean(torch.abs(G1-self.x_target))
-        self.g2_loss, self.d_loss = self._gan_loss(D_z_pos, D_z_neg)
-        self.PoseMaskLoss = torch.mean(torch.abs(G2 - self.x_target) * (self.mask_target))
-        self.L1Loss2 = torch.mean(torch.abs(G2 - self.x_target)) + self.PoseMaskLoss
+        self.PoseMaskLoss1 = torch.mean(torch.abs(G1-self.x_target)*self.mask_target)
+        self.g1_loss = torch.mean(torch.abs(G1-self.x_target)) + self.PoseMaskLoss1
+        self.g2_loss, self.d_loss = self._gan_loss(D_z_pos, D_z_neg,self.is_wgan)
+        self.PoseMaskLoss2 = torch.mean(torch.abs(G2 - self.x_target) * (self.mask_target))
+        self.L1Loss2 = torch.mean(torch.abs(G2 - self.x_target)) + self.PoseMaskLoss2
         self.g2_loss += self.L1Loss2 * 50
 
     def _set_optimizers(self):
