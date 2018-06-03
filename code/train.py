@@ -104,6 +104,20 @@ class Trainer:
             self.Gen1 = Generator1(self.z_num, self.repeat_num, self.hidden_num, device=self.device).to(device=self.device)
             self.Gen2 = Generator2(self.repeat_num, self.hidden_num, self.noise_dim, device=self.device).to(device=self.device)
             self.D    = Discriminator(device=self.device).to(device=self.device)
+
+            def weights_init(m):
+                classname = m.__class__.__name__
+                if classname.find('Conv2d') != -1:
+                    m.weight.data.uniform_(-0.02/np.sqrt(3.0).astype(np.float32), 0.02/np.sqrt(3.0).astype(np.float32))
+                    m.bias.data.fill_(0)
+                if classname.find('Linear') != -1:
+                    m.weight.data.uniform_(-0.02/np.sqrt(3.0).astype(np.float32), 0.02/np.sqrt(3.0).astype(np.float32))
+                    m.bias.data.fill_(0)
+
+            #self.Gen2.apply(weights_init)
+            self.D.apply(weights_init)
+
+
         else:
             self.Gen1 = torch.load(self.pretrained_path + '/G1.pt').to(device=self.device)
             self.Gen2 = torch.load(self.pretrained_path + '/G2.pt').to(device=self.device)
@@ -127,7 +141,7 @@ class Trainer:
                     self.mask        = self.mask.to(device=self.device)
                     self.mask_target = self.mask_target.to(device=self.device)
 
-                    if step < 25000: # Train only G1
+                    if step < 20000: # Train only G1
                         self.loss()
                         self.g1_solver.zero_grad()
                         self.g1_loss.backward()
@@ -146,10 +160,9 @@ class Trainer:
                     step += 1
                     
                     if step % self.print_every == 0:
-
                         print ('Step [{}/{}], G1 Loss: {:.4f}, G2 Loss: {:.4f}, D Loss: {:.4f}'
                                 .format(step,
-                                self.num_epochs * self.n_samples,
+                                self.num_epochs * self.n_samples/self.batch_size,
                                 self.g1_loss.item(),
                                 self.g2_loss.item(),
                                 self.d_loss.item()))

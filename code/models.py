@@ -41,10 +41,13 @@ class Generator1(nn.Module):
         self.Elinear1 = nn.Linear(min_fea_map_H * min_fea_map_H * channel_num, z_num).to(device=device)
 
         #DECODER
-        self.Dlinear1 = nn.Linear(z_num, min_fea_map_H * min_fea_map_H * hidden_num * repeat_num).to(device=device) # NOTE: Different from their code (repeat_num)
+        self.Dlinear1 = nn.Linear(z_num, min_fea_map_H * min_fea_map_H * hidden_num).to(device=device) # NOTE: Different from their code (repeat_num)
         self.Dlayers = {}
         for idx in range(repeat_num):
-            channel_num = hidden_num * (repeat_num - idx) * 2
+            if idx == 0:
+                channel_num = hidden_num*(repeat_num+1)
+            else:
+                channel_num = hidden_num * (repeat_num - idx) * 2
             self.Dlayers[str(idx+1)+"_1"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU()).to(device=device)
             self.Dlayers[str(idx+1)+"_2"] = nn.Sequential(nn.Conv2d(channel_num,channel_num,3,1,1),nn.ReLU()).to(device=device)
             if idx < repeat_num - 1:
@@ -74,7 +77,7 @@ class Generator1(nn.Module):
 
         # Decode x
         x = self.Dlinear1(x)
-        x = unflatten(x, x.shape[0], self.hidden_num * self.repeat_num, self.min_fea_map_H, self.min_fea_map_H)
+        x = unflatten(x, x.shape[0], self.hidden_num, self.min_fea_map_H, self.min_fea_map_H)
 
         for idx in range(self.repeat_num):
             x   = torch.cat((x, encoder_outputs[self.repeat_num-1-idx]), dim=1)

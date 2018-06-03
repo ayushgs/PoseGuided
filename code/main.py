@@ -18,7 +18,7 @@ if __name__ == "__main__":
     parser.add_argument('--z_num', type=int, default=64)
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--pretrained_path', type=str, default=None)
-    parser.add_argument('--num_epochs', type=int, default=75)
+    parser.add_argument('--num_epochs', type=int, default=30)
     parser.add_argument('--use_cuda', '-uc', action='store_true')
     parser.add_argument('--results_dir', type=str, default=None)
     parser.add_argument('--log_dir', type=str, default='logs')
