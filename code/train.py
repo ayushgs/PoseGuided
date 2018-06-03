@@ -31,6 +31,7 @@ class Trainer:
         self.log_every      = config['log_every']
         self.save_every     = config['save_every']
         self.print_every    = config['print_every']
+        self.is_wgan        = config['is_wgan']
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -52,9 +53,9 @@ class Trainer:
 
 
 
-    def _gan_loss(self, real, fake):
-        gen_cost  =  generator_loss(fake)
-        disc_cost =  0.5 * discriminator_loss(real, fake)
+    def _gan_loss(self, real, fake,is_wgan):
+        gen_cost  =  generator_loss(fake,is_wgan)
+        disc_cost =  0.5 * discriminator_loss(real, fake,is_wgan)
 
         return gen_cost, disc_cost
 
@@ -94,8 +95,16 @@ class Trainer:
 
     def _set_optimizers(self):
         self.g1_solver  = torch.optim.Adam(self.Gen1.parameters(), lr = 2e-5, betas=(0.5, 0.999))
-        self.g2_solver  = torch.optim.Adam(self.Gen2.parameters(), lr = 2e-5, betas=(0.5, 0.999))
-        self.d_solver   = torch.optim.Adam(self.D.parameters(), lr = 2e-5, betas=(0.5, 0.999))
+        if self.is_wgan:
+            '''
+            WGAN paper has RMSprop optimizier.
+            '''
+            self.g2_solver = torch.optim.RMSprop(self.Gen2.parameters(), lr=5e-5)
+            self.d_solver = torch.optim.RMSprop(self.D.parameters(), lr=5e-5)
+
+        else:
+            self.g2_solver  = torch.optim.Adam(self.Gen2.parameters(), lr = 2e-5, betas=(0.5, 0.999))
+            self.d_solver   = torch.optim.Adam(self.D.parameters(), lr = 2e-5, betas=(0.5, 0.999))
 
     def _init_net(self):
         """Initializes the models for training/testing
@@ -147,15 +156,38 @@ class Trainer:
                         self.g1_loss.backward()
                         self.g1_solver.step()
                     else: # Train G2 and D
-                        self.loss()
-                        self.d_solver.zero_grad()
-                        self.d_loss.backward()
-                        self.d_solver.step()
+                        
 
-                        self.loss() #TODO: is it required for alternating optimization?
-                        self.g2_solver.zero_grad()
-                        self.g2_loss.backward()
-                        self.g2_solver.step()
+                        if self.is_wgan:
+                            '''
+                            This section trains WGAN. 
+                            n_critic is set to 10. 
+                            discriminator parameters are clamped between -0.01 and 0.01.
+                            '''
+
+                            for i in range(10):
+                                self.loss()
+                                self.d_solver.zero_grad()
+                                self.d_loss.backward()
+                                self.d_solver.step()
+                                for parameter in self.D.parameters():
+                                    parameter.data.clamp_(-0.01,0.01)
+
+                            self.loss() #TODO: is it required for alternating optimization?
+                            self.g2_solver.zero_grad()
+                            self.g2_loss.backward()
+                            self.g2_solver.step()
+
+                        else:   
+                            self.loss()
+                            self.d_solver.zero_grad()
+                            self.d_loss.backward()
+                            self.d_solver.step()
+
+                            self.loss() #TODO: is it required for alternating optimization?
+                            self.g2_solver.zero_grad()
+                            self.g2_loss.backward()
+                            self.g2_solver.step()
 
                     step += 1
                     
