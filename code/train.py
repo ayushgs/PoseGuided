@@ -61,7 +61,7 @@ class Trainer:
 
     def loss(self):
         #Generate coarse image
-        G1      = self.Gen1(self.x, self.pose_target)
+        G1      = self.Gen1(self.x, self.mask_target) #using mask_target instead of pose_target
 
         #Generate Diffmap by concatenating G1 and image
         Diffmap = self.Gen2(torch.cat((G1, self.x), dim=1))
@@ -151,7 +151,7 @@ class Trainer:
                     self.mask        = self.mask.to(device=self.device)
                     self.mask_target = self.mask_target.to(device=self.device)
 
-                    if step < 20000: # Train only G1
+                    if step < 15000: # Train only G1
                         self.loss()
                         self.g1_solver.zero_grad()
                         self.g1_loss.backward()

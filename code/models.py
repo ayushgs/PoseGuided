@@ -26,7 +26,7 @@ class Generator1(nn.Module):
         self.min_fea_map_H  = min_fea_map_H
         		
 		#ENCODER
-        self.Econv1 = nn.Sequential(nn.Conv2d(21,hidden_num,3,1,1),nn.ReLU()).to(device=device)
+        self.Econv1 = nn.Sequential(nn.Conv2d(4,hidden_num,3,1,1),nn.ReLU()).to(device=device)
         self.Elayers = {}
         inp_channels = hidden_num
         for idx in range(repeat_num):
@@ -56,8 +56,8 @@ class Generator1(nn.Module):
         self.Dconv    = nn.Conv2d(channel_num, 3, 3, 1, 1).to(device=device) # generates a 3 channel image
         self.upscale  = nn.Upsample(scale_factor=2, mode='nearest').to(device=device)
 
-    def forward(self, x, pose_target):
-        x   = torch.cat((x,pose_target), dim=1)
+    def forward(self, x, pose_mask):
+        x   = torch.cat((x,pose_mask), dim=1)
         x   = self.Econv1(x)
         
         encoder_outputs = []
