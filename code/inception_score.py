@@ -71,15 +71,6 @@ def inception_score(images,batch_size=16,resize=False,splits = 10):
 	return np.mean(split_scores), np.std(split_scores)
 
 if __name__ == '__main__':
-	class IgnoreLabelDataset(torch.utils.data.Dataset):
-		def __init__(self, orig):
-			self.orig = orig
-
-		def __getitem__(self, index):
-			return self.orig[index][0]
-
-		def __len__(self):
-			return len(self.orig)
 
 	#inception score for G1 images
 
