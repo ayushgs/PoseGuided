@@ -52,7 +52,7 @@ def inception_score(images,batch_size=16,resize=False,splits = 10):
 		batch_size_i = batch.size(0)
 		scores[i*batch_size:i*batch_size + batch_size_i] = score(batch)
 
-	print "Scores calculated! \n Now calculating KL KL-Divergence"
+	print "Scores calculated! \n Now calculating KL-Divergence"
 
 	#KL-Divergence calculation
 	means = np.mean(scores,axis=0)
