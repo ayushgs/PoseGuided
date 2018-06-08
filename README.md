@@ -33,5 +33,6 @@ From the code directory: ./run_train.sh
 From the code directory: ./run_test.sh
 
 # Acknowledgments
-This work is an extension of the [Pose Guided Person Generation Network](https://papers.nips.cc/paper/6644-pose-guided-person-image-generation.pdf)
-The data prep pipeline derives from the authors' [github code](https://github.com/charliememory/Pose-Guided-Person-Image-Generation)
+This work is an extension of the [Pose Guided Person Generation Network](https://papers.nips.cc/paper/6644-pose-guided-person-image-generation.pdf).
+
+The data prep pipeline derives from the authors' [github code](https://github.com/charliememory/Pose-Guided-Person-Image-Generation).
