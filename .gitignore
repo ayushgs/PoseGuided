@@ -1,0 +1,15 @@
+**/__pycache__
+**.swp
+**/data*
+**/.ipynb_checkpoints/
+**.DS_Store
+test/experiments/
+checkpoints/
+logs/
+run_logs/
+
+**.pkl
+**.vector_cache
+
+**.mypy*
+**.vscode*
