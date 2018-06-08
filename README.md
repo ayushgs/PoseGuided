@@ -10,7 +10,8 @@ Pickle
 H5PY
 
 
-# Raw Data:
+# Data:
+## Raw Data:
 Filtered and downsized train data: https://drive.google.com/open?id=1-cy7-uWDmtBeOfxddoN-HMZTjEXj_p-Z
 
 ## Processed Data:
@@ -33,9 +34,9 @@ Test data: ~18k
 ### P.S.
 Check the path. Code assumes you are storing the DF_train_data and DF_test_data unzipped from the zip file in the cwd from where they are called to access.
 
-#### Training
+# Training
 From the code directory: ./run_train.sh
 
-#### Testing
+# Testing
 From the code directory: ./run_test.sh
 
