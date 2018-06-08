@@ -2,12 +2,12 @@
 Code for Pose Guided Image Generation implemented in PyTorch 0.4
 
 # Requirements
-Python 3.5+
-PyTorch 0.4
-TensorFlow 1.7+ (for TensorBoard)
-Skicit-Image
-Pickle
-H5PY
+Python 3.5+ <br />
+PyTorch 0.4 <br />
+TensorFlow 1.7+ (for TensorBoard) <br />
+Skicit-Image <br />
+Pickle <br />
+H5PY <br />
 
 
 # Data:
