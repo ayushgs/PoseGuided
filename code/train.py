@@ -59,7 +59,7 @@ class Trainer:
 
         return gen_cost, disc_cost
 
-    def loss(self):
+    def loss(self, mode='train'):
         #Generate coarse image
         G1      = self.Gen1(self.x, self.mask_target) #using mask_target instead of pose_target
 
@@ -72,6 +72,10 @@ class Trainer:
         self.G2 = denorm_img(G2)
         self.G  = self.G2.detach()
         self.DiffMap = denorm_img(Diffmap)
+
+        # Return if testing
+        if mode=='test':
+            return
 
         # Feed to Discriminator
         triplet = torch.cat((self.x_target, G2, self.x), dim=0)
@@ -151,7 +155,7 @@ class Trainer:
                     self.mask        = self.mask.to(device=self.device)
                     self.mask_target = self.mask_target.to(device=self.device)
 
-                    if step < 15000: # Train only G1
+                    if step < 25000: # Train only G1
                         self.loss()
                         self.g1_solver.zero_grad()
                         self.g1_loss.backward()
@@ -174,7 +178,7 @@ class Trainer:
                                 for parameter in self.D.parameters():
                                     parameter.data.clamp_(-0.01,0.01)
 
-                            self.loss() #TODO: is it required for alternating optimization?
+                            self.loss() 
                             self.g2_solver.zero_grad()
                             self.g2_loss.backward()
                             self.g2_solver.step()
@@ -185,7 +189,7 @@ class Trainer:
                             self.d_loss.backward()
                             self.d_solver.step()
 
-                            self.loss() #TODO: is it required for alternating optimization?
+                            self.loss() 
                             self.g2_solver.zero_grad()
                             self.g2_loss.backward()
                             self.g2_solver.step()
@@ -241,46 +245,26 @@ class Trainer:
                         torch.save(self.Gen2, './checkpoints/'+str(step)+'/G2.pt')
                         torch.save(self.D, './checkpoints/'+str(step)+'/D.pt')
 
-                    
 
     def test(self):
-        # TODO: fix the iteration and torch vs numpy
         self._init_net()
-        test_result_dir = os.path.join(self.model_dir, 'test_result')
-        test_result_dir_x = os.path.join(test_result_dir, 'x')
-        test_result_dir_x_target = os.path.join(test_result_dir, 'x_target')
-        test_result_dir_G = os.path.join(test_result_dir, 'G')
-        test_result_dir_pose = os.path.join(test_result_dir, 'pose')
-        test_result_dir_pose_target = os.path.join(test_result_dir, 'pose_target')
-        test_result_dir_mask = os.path.join(test_result_dir, 'mask')
-        test_result_dir_mask_target = os.path.join(test_result_dir, 'mask_target')
-        if not os.path.exists(test_result_dir):
-            os.makedirs(test_result_dir)
-        if not os.path.exists(test_result_dir_x):
-            os.makedirs(test_result_dir_x)
-        if not os.path.exists(test_result_dir_x_target):
-            os.makedirs(test_result_dir_x_target)
-        if not os.path.exists(test_result_dir_G):
-            os.makedirs(test_result_dir_G)
-        if not os.path.exists(test_result_dir_pose):
-            os.makedirs(test_result_dir_pose)
-        if not os.path.exists(test_result_dir_pose_target):
-            os.makedirs(test_result_dir_pose_target)
-        if not os.path.exists(test_result_dir_mask):
-            os.makedirs(test_result_dir_mask)
-        if not os.path.exists(test_result_dir_mask_target):
-            os.makedirs(test_result_dir_mask_target)
+        self._configure_paths()
 
         for batch in self.generator:
             self.x, self.x_target, self.pose, self.pose_target, \
             self.mask, self.mask_target = batch
+
+            self.x           = self.x.to(device=self.device)
+            self.x_target    = self.x_target.to(device=self.device)
+            self.pose        = self.pose.to(device=self.device)
+            self.pose_target = self.pose_target.to(device=self.device)
+            self.mask        = self.mask.to(device=self.device)
+            self.mask_target = self.mask_target.to(device=self.device)
+
             x_fixed, x_target_fixed, pose_fixed, pose_target_fixed, mask_fixed, mask_target_fixed = self.get_image_from_loader()
-            x = process_image(x_fixed, 127.5, 127.5)
-            x_target = process_image(x_target_fixed, 127.5, 127.5)
-            if i == 0:
-                x_fake = self.generate(x, x_target, pose_target_fixed, test_result_dir, idx=batch, save=True)
-            else:
-                x_fake = self.generate(x, x_target, pose_target_fixed, test_result_dir, idx=batch, save=False)
+            
+            self.loss(mode='test')
+
             p = (torch.max(pose_fixed, dim=1, keepdim=False)[0]+1.0)*127.5
             pt = (torch.max(pose_target_fixed, dim=1, keepdim=False)[0]+1.0)*127.5
             for j in range(self.batch_size):
@@ -299,13 +283,7 @@ class Trainer:
                 im.save('%s/%05d.png'%(test_result_dir_mask, idx))
                 im = Image.fromarray(mask_target_fixed[j,:].numpy().squeeze().astype(np.uint8))
                 im.save('%s/%05d.png'%(test_result_dir_mask_target, idx))
-            if 0==i:
-                save_image(x_fixed, '{}/x_fixed.png'.format(test_result_dir))
-                save_image(x_target_fixed, '{}/x_target_fixed.png'.format(test_result_dir))
-                save_image(mask_fixed, '{}/mask_fixed.png'.format(test_result_dir))
-                save_image(mask_target_fixed, '{}/mask_target_fixed.png'.format(test_result_dir))
-                save_image((torch.max(pose_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_fixed.png'.format(test_result_dir))
-                save_image((torch.max(pose_target_fixed, dim=1, keepdim=True)[0]+1.0)*127.5, '{}/pose_target_fixed.png'.format(test_result_dir))
+           
 
     def get_image_from_loader(self):
         x = (self.x + 1)/2 # range 0-1 for torchvision.utils.save_image
@@ -337,3 +315,29 @@ class Trainer:
             save_image(G/255.0, path) #torchvision.utils.save_image requires it to be 0-1
             print("[*] Samples saved: {}".format(path))
         return ssim_G_x_mean
+
+    def _configure_paths(self):
+        test_result_dir = os.path.join(self.model_dir, 'test_result')
+        test_result_dir_x = os.path.join(test_result_dir, 'x')
+        test_result_dir_x_target = os.path.join(test_result_dir, 'x_target')
+        test_result_dir_G = os.path.join(test_result_dir, 'G')
+        test_result_dir_pose = os.path.join(test_result_dir, 'pose')
+        test_result_dir_pose_target = os.path.join(test_result_dir, 'pose_target')
+        test_result_dir_mask = os.path.join(test_result_dir, 'mask')
+        test_result_dir_mask_target = os.path.join(test_result_dir, 'mask_target')
+        if not os.path.exists(test_result_dir):
+            os.makedirs(test_result_dir)
+        if not os.path.exists(test_result_dir_x):
+            os.makedirs(test_result_dir_x)
+        if not os.path.exists(test_result_dir_x_target):
+            os.makedirs(test_result_dir_x_target)
+        if not os.path.exists(test_result_dir_G):
+            os.makedirs(test_result_dir_G)
+        if not os.path.exists(test_result_dir_pose):
+            os.makedirs(test_result_dir_pose)
+        if not os.path.exists(test_result_dir_pose_target):
+            os.makedirs(test_result_dir_pose_target)
+        if not os.path.exists(test_result_dir_mask):
+            os.makedirs(test_result_dir_mask)
+        if not os.path.exists(test_result_dir_mask_target):
+            os.makedirs(test_result_dir_mask_target)

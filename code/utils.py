@@ -85,51 +85,6 @@ def generator_loss(logits_fake,is_wgan=False):
 def denorm_img(img):
     return torch.clamp((img+1) * 127.5, 0, 255)
 
-
-def make_grid(tensor, nrow=8, padding=2,
-              normalize=False, scale_each=False):
-    """Code based on https://github.com/pytorch/vision/blob/master/torchvision/utils.py"""
-    nmaps = tensor.shape[0]
-    xmaps = min(nrow, nmaps)
-    ymaps = int(math.ceil(float(nmaps) / xmaps))
-    height, width = int(tensor.shape[1] + padding), int(tensor.shape[2] + padding)
-    grid = np.zeros([height * ymaps + 1 + padding // 2, width * xmaps + 1 + padding // 2, 3], dtype=np.uint8)
-    k = 0
-    for y in range(ymaps):
-        for x in range(xmaps):
-            if k >= nmaps:
-                break
-            h, h_width = y * height + 1 + padding // 2, height - padding
-            w, w_width = x * width + 1 + padding // 2, width - padding
-
-            grid[h:h+h_width, w:w+w_width] = tensor[k]
-            k = k + 1
-    return grid
-
-def save_image1(tensor, filename, nrow=8, padding=2,
-               normalize=False, scale_each=False):
-    ndarr = make_grid(tensor, nrow=nrow, padding=padding,
-                            normalize=normalize, scale_each=scale_each)
-    im = Image.fromarray(ndarr)
-    im.save(filename)
-
-
-def save_image2(image, save_dir, image_height=256, image_width=256, name=""):
-    """
-    Save image by unprocessing assuming mean 127.5
-    """
-    if not isinstance(image, np.ndarray): # if it's a torch tensor
-        image = image.numpy()
-        image += 1
-        image *= 127.5
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    image = np.clip(image, 0, 255).astype(np.uint8)
-    image = np.reshape(image, (image_height, image_width, -1))
-    print(image.shape)
-    misc.imsave(os.path.join(save_dir, 'pred_img_'+name+'.jpg'), image)
-
-
 def process_image(image, mean_pixel, norm):
     return (image - mean_pixel) / norm
 
