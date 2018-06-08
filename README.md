@@ -11,24 +11,16 @@ H5PY <br />
 
 
 # Data:
-## Raw Data:
-Filtered and downsized train data: https://drive.google.com/open?id=1-cy7-uWDmtBeOfxddoN-HMZTjEXj_p-Z
+
 
 ## Processed Data:
-Processed Data
-To download complete training data, use the command:
-wget --load-cookies /tmp/cookies.txt "https://drive.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://drive.google.com/uc?export=download&id=1XhFe7pnH6NQJ7ariAfucLdDrKTrjs87a' -O- | sed -rn 's/.confirm=([0-9A-Za-z_]+)./\1\n/p')&id=1XhFe7pnH6NQJ7ariAfucLdDrKTrjs87a" -O DF_train_data.zip && rm -rf /tmp/cookies.txt
 
-To download complete test set, use the command:
-wget --load-cookies /tmp/cookies.txt "https://drive.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://drive.google.com/uc?export=download&id=13F6ghjtmqCZHDnRLc33r4wTa1-urxDVF' -O- | sed -rn 's/.confirm=([0-9A-Za-z_]+)./\1\n/p')&id=13F6ghjtmqCZHDnRLc33r4wTa1-urxDVF" -O DF_test_data.zip && rm -rf /tmp/cookies.txt
+#### Final data
+https://drive.google.com/open?id=1LSXIeoKhV0rvGhA0PJhojB73JhbZcfeN
 
-Train and test data: https://drive.google.com/open?id=1IqR81O0ioDPQpIya0njyY2qFMDEKlO_X
+Training data count: 127, 022
 
-10,000+ train data: https://drive.google.com/open?id=1_GinawCMN3wQjJDFvlzCxxDxjtwz5zLe
-
-Final data: https://drive.google.com/open?id=1LSXIeoKhV0rvGhA0PJhojB73JhbZcfeN
-Training data count: 127022
-Test data: ~18k
+Test data: 18, 568
 
 
 ### P.S.
@@ -40,3 +32,6 @@ From the code directory: ./run_train.sh
 # Testing
 From the code directory: ./run_test.sh
 
+# Acknowledgments
+This work is an extension of the [Pose Guided Person Generation Network](https://papers.nips.cc/paper/6644-pose-guided-person-image-generation.pdf)
+The data prep pipeline derives from the authors' [github code](https://github.com/charliememory/Pose-Guided-Person-Image-Generation)
